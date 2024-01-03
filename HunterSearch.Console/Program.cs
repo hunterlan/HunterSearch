@@ -20,7 +20,7 @@ static extern bool FileTimeToSystemTime(
 static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
 
 const string hostUrl = "http://localhost:9200";
-const string name = "s28619_performance_data";
+const string indexName = "s28619_performance_data";
 
 var settings = new ElasticsearchClientSettings(new Uri(hostUrl));
 var client = new ElasticsearchClient(settings);
@@ -62,26 +62,12 @@ else
 }
 
 Console.WriteLine();
-var creationOperation = await client.Indices.CreateAsync(name);
+
+var creationOperation = await client.Indices.CreateAsync(indexName);
 
 if (creationOperation.IsSuccess())
 {
-    var countMinutes = 0;
-    while (countMinutes != 15)
-    {
-        var dateTime = DateTime.Now;
-        var timestamp = new DateTimeOffset(dateTime).ToUnixTimeSeconds();
-        var ip = "0.0.0.0";
-        var cpuUsage = GetCpuUsage();
-        var ramUsage = GetRamUsage();
-        Console.WriteLine($"CPU usage on {countMinutes + 1} minute is {cpuUsage}%");
-        Console.WriteLine($"RAM usage on {countMinutes + 1} minute is {ramUsage} GB");
-        Console.WriteLine("");
-        var currentDeviceInfo = new DeviceInfo(timestamp, ip, cpuUsage, ramUsage);
-        var sendResponse = await client.IndexAsync(currentDeviceInfo, "");
-        Thread.Sleep(60000);
-        countMinutes++;
-    }
+    Console.WriteLine("Index created successfully");
 }
 else
 {
@@ -89,19 +75,52 @@ else
     Environment.Exit(0);
 }
 
+var countMinutes = 0;
+while (countMinutes < 15)
+{
+    var dateTime = DateTime.Now;
+    var timestamp = new DateTimeOffset(dateTime).ToUnixTimeSeconds();
+    var ip = "0.0.0.0";
+    var cpuUsage = GetCpuUsage();
+    var ramUsage = GetRamUsage();
+    Console.WriteLine($"CPU usage on {countMinutes + 1} minute is {cpuUsage}%");
+    Console.WriteLine($"RAM usage on {countMinutes + 1} minute is {ramUsage} GB");
+    Console.WriteLine("");
+    var currentDeviceInfo = new DeviceInfo(timestamp, ip, cpuUsage, ramUsage);
+    var sendResponse = await client.IndexAsync(currentDeviceInfo, indexName);
+    if (sendResponse.IsSuccess())
+    {
+        Console.WriteLine("This data was successfully sent.");
+    }
+    else
+    {
+        Console.WriteLine("Error occured during sending this data.");
+    }
+
+    Thread.Sleep(60000);
+    countMinutes++;
+}
+
 return;
 /*
  * Only God and MSDN knows how it works, WinAPI is cursed thing 💀
  */
-ulong GetRamUsage()
+double GetRamUsage()
 {
     var memoryStatus = new MEMORYSTATUSEX();
     memoryStatus.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
 
-    var totalMemoryGb = memoryStatus.ullTotalPhys / (1024 * 1024 * 1024);
-    var availableMemoryGb = memoryStatus.ullAvailPhys / (1024 * 1024 * 1024);
+    var result = GlobalMemoryStatusEx(ref memoryStatus);
 
-    return totalMemoryGb - availableMemoryGb;
+    if (result == false)
+    {
+        throw new Exception("Failed to get memory information");
+    }
+
+    var totalMemoryGb = (double)memoryStatus.ullTotalPhys / (1024 * 1024 * 1024);
+    var availableMemoryGb = (double)memoryStatus.ullAvailPhys / (1024 * 1024 * 1024);
+
+    return Math.Round(totalMemoryGb - availableMemoryGb, 2);
 }
 
 double GetCpuUsage()
@@ -118,9 +137,9 @@ double GetCpuUsage()
     long kernelTicks = (((long)kernelTime.dwHighDateTime) << 32) | kernelTime.dwLowDateTime;
     long userTicks = (((long)userTime.dwHighDateTime) << 32) | userTime.dwLowDateTime;
 
-    double idlePercent = (double)idleTicks / (kernelTicks + userTicks) * 100;
+    var idlePercent = (double)idleTicks / (kernelTicks + userTicks) * 100;
 
-    return 100 - idlePercent;
+    return Math.Round(100 - idlePercent, 2);
 }
 
 internal class DeviceInfo(long currentTimestamp, string ipAddress, double cpuUsage, double ramUsage)
