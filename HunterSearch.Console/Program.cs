@@ -101,6 +101,30 @@ while (countMinutes < 15)
     countMinutes++;
 }
 
+Console.WriteLine("Trying to get all device info logs");
+var response = await client.SearchAsync<DeviceInfo>(s => 
+    s.Index(indexName).From(0).Size(20));
+var logs = new List<DeviceInfo>();
+
+if (response.IsSuccess())
+{
+    Console.WriteLine("Data was retrieved successfully.");
+    logs = response.Documents.ToList();
+}
+else
+{
+    Console.WriteLine("There was an error during retrieving data. Continuous execution isn't possible.");
+    Environment.Exit(0);
+}
+
+await using(TextWriter tw = new StreamWriter(indexName + ".txt", false))
+{
+    foreach (var log in logs)
+    {
+        tw.WriteLine(log.ToString());
+    }
+}
+
 return;
 /*
  * Only God and MSDN knows how it works, WinAPI is cursed thing 💀
@@ -148,6 +172,11 @@ internal class DeviceInfo(long currentTimestamp, string ipAddress, double cpuUsa
     public string IpAddress { get; set; } = ipAddress;
     public double CpuUsage { get; set; } = cpuUsage;
     public double RamUsage { get; set; } = ramUsage;
+
+    public override string ToString()
+    {
+        return $"{CurrentTimestamp}\t{IpAddress}\t{CpuUsage}\t{RamUsage}";
+    }
 }
 
 [StructLayout(LayoutKind.Sequential)]
