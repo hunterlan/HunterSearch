@@ -58,6 +58,7 @@ if (pingResponse.IsSuccess())
 else
 {
     Console.WriteLine("Failed to connect. Continuous execution isn't possible.");
+    Console.WriteLine($"Reason: {pingResponse.ElasticsearchServerError!.Error.Reason}");
     Environment.Exit(0);
 }
 
@@ -69,9 +70,14 @@ if (creationOperation.IsSuccess())
 {
     Console.WriteLine("Index created successfully");
 }
+else if (creationOperation.ElasticsearchServerError!.Error.Type is "resource_already_exists_exception")
+{
+    Console.WriteLine("Index is already created. Skip the operation.");
+}
 else
 {
     Console.WriteLine("Failed to create new index. Continuous execution isn't possible.");
+    Console.WriteLine($"Reason: {creationOperation.ElasticsearchServerError!.Error.Reason}");
     Environment.Exit(0);
 }
 
