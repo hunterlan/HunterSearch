@@ -1,26 +1,9 @@
 ﻿using Elastic.Clients.Elasticsearch;
-using System.Runtime.InteropServices;
-
-[DllImport("kernel32.dll")]
-static extern bool GetSystemTimes(
-    out FILETIME lpIdleTime,
-    out FILETIME lpKernelTime,
-    out FILETIME lpUserTime
-);
-
-[DllImport("kernel32.dll")]
-[return: MarshalAs(UnmanagedType.Bool)]
-static extern bool FileTimeToSystemTime(
-    ref FILETIME lpFileTime,
-    out SYSTEMTIME lpSystemTime
-);
-
-[DllImport("kernel32.dll", SetLastError = true)]
-[return: MarshalAs(UnmanagedType.Bool)]
-static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+using HunterSearch.Console;
 
 const string hostUrl = "http://localhost:9200";
 const string indexName = "s28619_performance_data";
+var deviceStatistics = new DeviceStatistics();
 
 var settings = new ElasticsearchClientSettings(new Uri(hostUrl));
 var client = new ElasticsearchClient(settings);
@@ -87,8 +70,8 @@ while (countMinutes < 15)
     var dateTime = DateTime.Now;
     var timestamp = new DateTimeOffset(dateTime).ToUnixTimeSeconds();
     var ip = "0.0.0.0";
-    var cpuUsage = GetCpuUsage();
-    var ramUsage = GetRamUsage();
+    var cpuUsage = deviceStatistics.GetCpuUsage();
+    var ramUsage = deviceStatistics.GetRamUsage();
     Console.WriteLine($"CPU usage on {countMinutes + 1} minute is {cpuUsage}%");
     Console.WriteLine($"RAM usage on {countMinutes + 1} minute is {ramUsage} GB");
     Console.WriteLine("");
@@ -101,6 +84,7 @@ while (countMinutes < 15)
     else
     {
         Console.WriteLine("Error occured during sending this data.");
+        Console.WriteLine($"Reason: {creationOperation.ElasticsearchServerError!.Error.Reason}");
     }
 
     Thread.Sleep(60000);
@@ -108,18 +92,19 @@ while (countMinutes < 15)
 }
 
 Console.WriteLine("Trying to get all device info logs");
-var response = await client.SearchAsync<DeviceInfo>(s => 
+var searchResponse = await client.SearchAsync<DeviceInfo>(s => 
     s.Index(indexName).From(0).Size(20));
 var logs = new List<DeviceInfo>();
 
-if (response.IsSuccess())
+if (searchResponse.IsSuccess())
 {
     Console.WriteLine("Data was retrieved successfully.");
-    logs = response.Documents.ToList();
+    logs = searchResponse.Documents.ToList();
 }
 else
 {
     Console.WriteLine("There was an error during retrieving data. Continuous execution isn't possible.");
+    Console.WriteLine($"Reason: {creationOperation.ElasticsearchServerError!.Error.Reason}");
     Environment.Exit(0);
 }
 
@@ -129,92 +114,4 @@ await using(TextWriter tw = new StreamWriter(indexName + ".txt", false))
     {
         tw.WriteLine(log.ToString());
     }
-}
-
-return;
-/*
- * Only God and MSDN knows how it works, WinAPI is cursed thing 💀
- */
-double GetRamUsage()
-{
-    var memoryStatus = new MEMORYSTATUSEX();
-    memoryStatus.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
-
-    var result = GlobalMemoryStatusEx(ref memoryStatus);
-
-    if (result == false)
-    {
-        throw new Exception("Failed to get memory information");
-    }
-
-    var totalMemoryGb = (double)memoryStatus.ullTotalPhys / (1024 * 1024 * 1024);
-    var availableMemoryGb = (double)memoryStatus.ullAvailPhys / (1024 * 1024 * 1024);
-
-    return Math.Round(totalMemoryGb - availableMemoryGb, 2);
-}
-
-double GetCpuUsage()
-{
-    FILETIME idleTime, kernelTime, userTime;
-    GetSystemTimes(out idleTime, out kernelTime, out userTime);
-
-    SYSTEMTIME idleSystemTime, kernelSystemTime, userSystemTime;
-    FileTimeToSystemTime(ref idleTime, out idleSystemTime);
-    FileTimeToSystemTime(ref kernelTime, out kernelSystemTime);
-    FileTimeToSystemTime(ref userTime, out userSystemTime);
-
-    long idleTicks = (((long)idleTime.dwHighDateTime) << 32) | idleTime.dwLowDateTime;
-    long kernelTicks = (((long)kernelTime.dwHighDateTime) << 32) | kernelTime.dwLowDateTime;
-    long userTicks = (((long)userTime.dwHighDateTime) << 32) | userTime.dwLowDateTime;
-
-    var idlePercent = (double)idleTicks / (kernelTicks + userTicks) * 100;
-
-    return Math.Round(100 - idlePercent, 2);
-}
-
-internal class DeviceInfo(long currentTimestamp, string ipAddress, double cpuUsage, double ramUsage)
-{
-    public long CurrentTimestamp { get; set; } = currentTimestamp;
-    public string IpAddress { get; set; } = ipAddress;
-    public double CpuUsage { get; set; } = cpuUsage;
-    public double RamUsage { get; set; } = ramUsage;
-
-    public override string ToString()
-    {
-        return $"{CurrentTimestamp}\t{IpAddress}\t{CpuUsage}\t{RamUsage}";
-    }
-}
-
-[StructLayout(LayoutKind.Sequential)]
-struct SYSTEMTIME
-{
-    public ushort wYear;
-    public ushort wMonth;
-    public ushort wDayOfWeek;
-    public ushort wDay;
-    public ushort wHour;
-    public ushort wMinute;
-    public ushort wSecond;
-    public ushort wMilliseconds;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-struct FILETIME
-{
-    public uint dwLowDateTime;
-    public uint dwHighDateTime;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-struct MEMORYSTATUSEX
-{
-    public uint dwLength;
-    public uint dwMemoryLoad;
-    public ulong ullTotalPhys;
-    public ulong ullAvailPhys;
-    public ulong ullTotalPageFile;
-    public ulong ullAvailPageFile;
-    public ulong ullTotalVirtual;
-    public ulong ullAvailVirtual;
-    public ulong ullAvailExtendedVirtual;
 }

@@ -11,4 +11,8 @@
       <PackageReference Include="Elastic.Clients.Elasticsearch" Version="8.11.0" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\HunterSearch.WinAPI\HunterSearch.WinAPI.csproj" />
+    </ItemGroup>
+
 </Project>
