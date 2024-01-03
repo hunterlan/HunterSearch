@@ -1,9 +1,11 @@
-﻿using Elastic.Clients.Elasticsearch;
+﻿using System.Diagnostics;
+using Elastic.Clients.Elasticsearch;
 using HunterSearch.Console;
+using HunterSearch.Console.Factories;
 
 const string hostUrl = "http://localhost:9200";
 const string indexName = "s28619_performance_data";
-var deviceStatistics = new DeviceStatistics();
+var deviceStatistics = new WindowsStatisticsFactory().CreateDeviceStatistics();
 
 var settings = new ElasticsearchClientSettings(new Uri(hostUrl));
 var client = new ElasticsearchClient(settings);
