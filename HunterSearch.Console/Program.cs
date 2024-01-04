@@ -4,7 +4,7 @@ using HunterSearch.Console;
 using HunterSearch.Console.Factories;
 
 const string hostUrl = "http://localhost:9200";
-const string indexName = "s28619_performance_data";
+const string indexName = "<index_number>_performance_data";
 var deviceStatistics = new WindowsStatisticsFactory().CreateDeviceStatistics();
 
 var settings = new ElasticsearchClientSettings(new Uri(hostUrl));
